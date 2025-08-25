@@ -3,6 +3,7 @@
 inkscape_extension/
 memory_bank/
 .cursor/
+legacy_gcode/
 
 # Environment and IDE files
 .venv/
@@ -36,3 +37,6 @@ wheels/
 # Logs and temporary files
 *.log
 *.tmp
+
+# Generated G-code files
+gcode/
