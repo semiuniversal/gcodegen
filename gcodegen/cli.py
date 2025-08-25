@@ -1,216 +1,210 @@
-"""Command-line interface for GCodeGen."""
+"""Command-line interface for GCodeGen.
+
+This module provides the command-line interface for converting SVG files to G-code.
+"""
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
-from . import __version__
-from .config import Config
-from .gcode import GCodeGenerator
-from .svg import SVGDocument
+import yaml
+from lxml import etree
+
+from gcodegen.config import load_config
+from gcodegen.svg import SVGDocument, SVGPath
+from gcodegen.path_processor import PathProcessor
+from gcodegen.airbrush import AirbrushController
+from gcodegen.gcode import GCodeGenerator
+from gcodegen import __version__
 
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)]
+    handlers=[logging.StreamHandler()],
 )
 logger = logging.getLogger(__name__)
 
 
-def parse_args(args=None):
-    """Parse command line arguments.
-    
-    Args:
-        args: Command line arguments (optional)
-        
-    Returns:
-        Parsed arguments
-    """
+def parse_args():
+    """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
         description="Convert SVG files to G-code for H.Airbrush device."
     )
     parser.add_argument(
-        "--input", "-i", required=True, type=Path, help="Input SVG file path"
+        "--input", "-i", type=str, required=True, help="Input SVG file path"
     )
     parser.add_argument(
-        "--output", "-o", required=True, type=Path, help="Output G-code file path"
+        "--output", "-o", type=str, help="Output G-code file path (default: input file with .gcode extension)"
     )
     parser.add_argument(
-        "--config", "-c", type=Path, help="Configuration YAML file path"
+        "--config", "-c", type=str, help="Configuration file path (YAML)"
     )
     parser.add_argument(
-        "--units",
-        choices=["mm", "in"],
-        default="mm",
-        help="Units to use (default: mm)",
+        "--units", "-u", type=str, default="mm", choices=["mm", "in"],
+        help="Output units (default: mm)"
     )
     parser.add_argument(
-        "--verbose", "-v", action="count", default=0, help="Increase verbosity"
+        "--debug", "-d", action="store_true", help="Enable debug output"
     )
     parser.add_argument(
-        "--version", action="version", version=f"GCodeGen {__version__}"
+        "--version", "-v", action="version", version=f"GCodeGen {__version__}"
     )
     
-    return parser.parse_args(args)
+    return parser.parse_args()
 
 
-def setup_logging(verbosity):
-    """Set up logging based on verbosity level.
+def validate_files(input_path: str, output_path: Optional[str] = None) -> Tuple[Path, Path]:
+    """Validate input and output file paths.
     
     Args:
-        verbosity: Verbosity level (0=INFO, 1=DEBUG)
-    """
-    if verbosity >= 1:
-        logging.getLogger().setLevel(logging.DEBUG)
-        logger.debug("Debug logging enabled")
-    else:
-        logging.getLogger().setLevel(logging.INFO)
-
-
-def validate_files(input_file, output_file):
-    """Validate input and output files.
-    
-    Args:
-        input_file: Input file path
-        output_file: Output file path
+        input_path: Input file path
+        output_path: Output file path (optional)
         
     Returns:
-        True if files are valid, False otherwise
+        Tuple of validated input and output Path objects
+        
+    Raises:
+        FileNotFoundError: If input file does not exist
+        ValueError: If output directory does not exist
     """
-    # Check if input file exists
+    input_file = Path(input_path)
     if not input_file.exists():
-        logger.error(f"Input file not found: {input_file}")
-        return False
+        raise FileNotFoundError(f"Input file not found: {input_file}")
         
-    # Check if input file is an SVG file
-    if input_file.suffix.lower() != ".svg":
-        logger.error(f"Input file is not an SVG file: {input_file}")
-        return False
+    if not output_path:
+        output_file = input_file.with_suffix(".gcode")
+    else:
+        output_file = Path(output_path)
         
-    # Check if output directory exists
+    # Ensure output directory exists
     output_dir = output_file.parent
     if not output_dir.exists():
-        logger.warning(f"Output directory does not exist, creating: {output_dir}")
         try:
             output_dir.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Created output directory: {output_dir}")
         except Exception as e:
-            logger.error(f"Failed to create output directory: {e}")
-            return False
+            raise ValueError(f"Could not create output directory: {output_dir}") from e
             
-    # Check if output file has .gcode extension
-    if output_file.suffix.lower() != ".gcode":
-        logger.warning(f"Output file does not have .gcode extension: {output_file}")
-        
-    return True
+    return input_file, output_file
 
 
-def convert_svg_to_gcode(input_file, output_file, config, units):
+def convert_svg_to_gcode(svg_file: Path, gcode_file: Path, config: Dict, units: str = "mm") -> bool:
     """Convert SVG file to G-code.
     
     Args:
-        input_file: Input SVG file path
-        output_file: Output G-code file path
-        config: Configuration object
-        units: Units to use (mm or in)
+        svg_file: Input SVG file path
+        gcode_file: Output G-code file path
+        config: Configuration dictionary
+        units: Output units ("mm" or "in")
         
     Returns:
         True if conversion was successful, False otherwise
     """
     try:
         # Parse SVG file
-        logger.info(f"Parsing SVG file: {input_file}")
-        svg_doc = SVGDocument(input_file)
-        
-        # Get paths from SVG
-        paths = svg_doc.get_paths()
-        if not paths:
-            logger.error("No paths found in SVG file")
-            return False
-            
-        logger.info(f"Found {len(paths)} paths in SVG file")
+        logger.info(f"Parsing SVG file: {svg_file}")
+        svg_doc = SVGDocument(svg_file)
         
         # Create G-code generator
-        generator = GCodeGenerator(config.config)
+        gcode_gen = GCodeGenerator(config)
+        
+        # Create airbrush controller
+        airbrush = AirbrushController(config)
+        
+        # Add header with version and input file info
+        gcode_gen.add_line(f"; Generated by GCodeGen {__version__}")
+        gcode_gen.add_line(f"; Input file: {svg_file.name}")
         
         # Add start commands
-        generator.add_lines(generator.generate_start_commands())
-        generator.add_line(generator.comment(f"Generated by GCodeGen {__version__}"))
-        generator.add_line(generator.comment(f"Input file: {input_file.name}"))
+        gcode_gen.add_lines(gcode_gen.generate_start_commands())
         
-        # Set units
-        generator.add_line(generator.set_units(units))
+        # Add machine initialization
+        gcode_gen.add_lines(airbrush.generate_machine_initialization())
         
-        # Set absolute positioning
-        generator.add_line(generator.set_absolute_positioning())
+        # Process each path in the SVG
+        paths = svg_doc.get_paths()
+        logger.info(f"Found {len(paths)} paths in SVG")
         
-        # Home axes
-        generator.add_line(generator.home_axes(x=True, y=True, z=True))
+        for i, svg_path in enumerate(paths):
+            # Extract path data and attributes
+            path_data = svg_path.path_data
+            stroke_width = svg_path.stroke_width
+            stroke_color = svg_path.stroke_color
+            stroke_opacity = svg_path.stroke_opacity
+            
+            logger.info(f"Processing path {i+1}/{len(paths)}: "
+                       f"width={stroke_width:.2f}mm, color={stroke_color}, "
+                       f"opacity={stroke_opacity:.2f}")
+            
+            # Parse path data into commands
+            path_commands = PathProcessor.parse_path(path_data)
+            
+            # Convert path commands to polyline
+            polyline = PathProcessor.path_to_polyline(path_commands)
+            
+            # Apply SVG transformations to polyline
+            transformed_polyline = []
+            for x, y in polyline:
+                # Apply the path's transformation matrix
+                tx, ty = svg_path.apply_transform(x, y)
+                transformed_polyline.append((tx, ty))
+            
+            # Generate G-code for the path
+            path_gcode = airbrush.generate_path_commands(
+                transformed_polyline, stroke_color, stroke_width, stroke_opacity
+            )
+            
+            # Add path G-code to output
+            gcode_gen.add_lines(path_gcode)
         
-        # TODO: Implement full path to G-code conversion
-        # For now, just add a simple square as a placeholder
-        logger.warning("Full path to G-code conversion not yet implemented")
-        logger.info("Adding placeholder square pattern")
-        
-        # Move to safe Z
-        safe_z = config.get("machine.safe_z", 5)
-        generator.add_line(generator.move_to(z=safe_z, feed_rate=1000))
-        
-        # Move to start position
-        generator.add_line(generator.move_to(x=10, y=10, feed_rate=3000))
-        
-        # Lower to work Z
-        generator.add_line(generator.move_to(z=0, feed_rate=1000))
-        
-        # Draw a square
-        generator.add_line(generator.move_to(x=50, y=10, feed_rate=1500))
-        generator.add_line(generator.move_to(x=50, y=50, feed_rate=1500))
-        generator.add_line(generator.move_to(x=10, y=50, feed_rate=1500))
-        generator.add_line(generator.move_to(x=10, y=10, feed_rate=1500))
-        
-        # Raise to safe Z
-        generator.add_line(generator.move_to(z=safe_z, feed_rate=1000))
-        
-        # Add end commands
-        generator.add_lines(generator.generate_end_commands())
+        # Add machine cleanup
+        gcode_gen.add_lines(airbrush.generate_machine_cleanup())
         
         # Save G-code to file
-        logger.info(f"Saving G-code to: {output_file}")
-        if not generator.save_to_file(output_file):
-            return False
+        logger.info(f"Saving G-code to: {gcode_file}")
+        success = gcode_gen.save_to_file(gcode_file)
+        
+        if success:
+            logger.info("Conversion completed successfully")
+        else:
+            logger.error("Failed to save G-code file")
             
-        logger.info("Conversion completed successfully")
-        return True
+        return success
         
     except Exception as e:
-        logger.error(f"Error converting SVG to G-code: {e}")
+        logger.error(f"Error converting SVG to G-code: {e}", exc_info=True)
         return False
 
 
 def main():
     """Main entry point."""
-    # Parse command line arguments
-    args = parse_args()
-    
-    # Set up logging
-    setup_logging(args.verbose)
-    
-    # Validate input and output files
-    if not validate_files(args.input, args.output):
-        sys.exit(1)
+    try:
+        # Parse command-line arguments
+        args = parse_args()
         
-    # Load configuration
-    config = Config(args.config)
-    if not config.validate():
-        logger.error("Invalid configuration")
-        sys.exit(1)
+        # Set log level
+        if args.debug:
+            logging.getLogger().setLevel(logging.DEBUG)
+            
+        # Validate input and output files
+        input_file, output_file = validate_files(args.input, args.output)
         
-    # Convert SVG to G-code
-    if not convert_svg_to_gcode(args.input, args.output, config, args.units):
-        sys.exit(1)
+        # Load configuration
+        config = load_config(args.config)
         
-    sys.exit(0)
+        # Convert SVG to G-code
+        success = convert_svg_to_gcode(input_file, output_file, config, args.units)
+        
+        # Exit with appropriate status code
+        sys.exit(0 if success else 1)
+        
+    except Exception as e:
+        logger.error(f"Error: {e}", exc_info=True)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
