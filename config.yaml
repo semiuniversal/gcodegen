@@ -1,0 +1,53 @@
+machine:
+  name: "H.Airbrush"
+  bed_size_x: 400  # mm
+  bed_size_y: 400  # mm
+  head_offsets:
+    tool0:
+      x: 0  # mm
+      y: 0  # mm
+    tool1:
+      x: 10  # mm
+      y: 0  # mm
+  safe_z: 5  # mm
+  travel_speed: 3000  # mm/min
+  work_speed: 1500  # mm/min
+
+gcode:
+  start_commands:
+    - "G21 ; Set units to millimeters"
+    - "G90 ; Use absolute coordinates"
+    - "M83 ; Use relative distances for extrusion"
+    - "G28 X Y ; Home X and Y"
+    - "G1 Z10 F1000 ; Raise Z to safe height"
+  end_commands:
+    - "G1 Z10 F1000 ; Raise Z"
+    - "G28 X Y ; Home X and Y"
+    - "M84 ; Disable motors"
+  tool_change_commands:
+    tool0:
+      - "T0 ; Select tool 0"
+      - "M400 ; Wait for moves to complete"
+    tool1:
+      - "T1 ; Select tool 1"
+      - "M400 ; Wait for moves to complete"
+
+svg:
+  default_units: "mm"  # mm, in, px
+  dpi: 96  # For px to mm conversion
+  invert_y: true  # Invert Y coordinates (SVG has Y=0 at top)
+  origin: "bottom-left"  # bottom-left, center, top-left
+
+tools:
+  tool0:
+    name: "Black"
+    color: "#000000"
+    min_width: 0.3  # mm
+    max_width: 2.0  # mm
+    width_to_flow_factor: 1.0  # Flow multiplier based on width
+  tool1:
+    name: "White"
+    color: "#FFFFFF"
+    min_width: 0.3  # mm
+    max_width: 2.0  # mm
+    width_to_flow_factor: 1.0  # Flow multiplier based on width 
