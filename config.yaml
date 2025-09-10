@@ -1,53 +1,100 @@
+# User configuration for GCodeGen.
+# This is used to override the default configuration.
+# It must be passed in as a file path on the command line with the --config flag.
+# Example:
+# python gcodegen.py --input svg/input.svg --output gcode/output.gcode --config config.yaml
+# 
+# Notation in comments below
+# - (USED): actively consumed by code today
+# - (OPTIONAL): supported, but has safe defaults
+# - (CURRENTLY UNUSED): present for future/legacy; changing it has no effect now
+
+# Machine parameters
 machine:
-  name: "H.Airbrush"
-  bed_size_x: 400  # mm
-  bed_size_y: 400  # mm
+  name: "H.Airbrush"  # (OPTIONAL) for operator reference only
+  bed_size_x: 875  # mm  # (OPTIONAL) physical bed X; currently not enforced in code
+  bed_size_y: 1100  # mm # (OPTIONAL) physical bed Y; currently not enforced in code
   head_offsets:
     tool0:
-      x: 0  # mm
-      y: 0  # mm
+      x: 0  # mm  # (USED) XY offset for Tool 0 tip relative to machine origin
+      y: 0  # mm  # (USED) affects registration between tools
     tool1:
-      x: 10  # mm
-      y: 0  # mm
-  safe_z: 5  # mm
-  travel_speed: 3000  # mm/min
-  work_speed: 1500  # mm/min
+      x: -100  # mm # (USED) XY offset for Tool 1 tip
+      y: 25   # mm # (USED)
+  safe_z: 10  # mm   # (USED) clearance height for non-drawing travel moves
+  z_min: 4.0  # mm   # (USED) lower bound for Z (minimum achievable line width)
+  z_max: 83.0 # mm   # (USED) upper bound for Z (maximum achievable line width)
+  travel_speed: 24000  # mm/min  # (USED) rapid moves between strokes
+  work_speed: 3000     # mm/min  # (USED) baseline draw speed in some code paths
+  z_speed: 1200        # mm/min  # (USED) speed for Z raises/lowers
+  skip_homing: false             # (USED) if true, omits G28 homing in init
 
+# G-code commands
 gcode:
   start_commands:
-    - "G21 ; Set units to millimeters"
-    - "G90 ; Use absolute coordinates"
-    - "M83 ; Use relative distances for extrusion"
-    - "G28 X Y ; Home X and Y"
-    - "G1 Z10 F1000 ; Raise Z to safe height"
+    - "G21 ; Set units to millimeters"      # (USED) appended at file start
+    - "G90 ; Use absolute coordinates"      # (USED)
+    - "M83 ; Use relative distances for extrusion" # (CURRENTLY UNUSED for airbrush)
+    - "G28 X Y ; Home X and Y"              # (USED) unless skip_homing=true
+    - "G1 Z10 F1000 ; Raise Z to safe height" # (USED) part of startup
   end_commands:
-    - "G1 Z10 F1000 ; Raise Z"
-    - "G28 X Y ; Home X and Y"
-    - "M84 ; Disable motors"
+    - "G1 Z10 F1000 ; Raise Z"              # (USED) appended at file end
+    - "G28 X Y ; Home X and Y"              # (USED)
+    - "M84 ; Disable motors"                # (USED)
   tool_change_commands:
     tool0:
-      - "T0 ; Select tool 0"
-      - "M400 ; Wait for moves to complete"
+      - "T0 ; Select tool 0"                 # (USED) tool select emitted by airbrush
+      - "M400 ; Wait for moves to complete"  # (USED) sync after tool select
     tool1:
-      - "T1 ; Select tool 1"
-      - "M400 ; Wait for moves to complete"
+      - "T1 ; Select tool 1"                 # (USED)
+      - "M400 ; Wait for moves to complete"  # (USED)
 
+# SVG parameters
 svg:
-  default_units: "mm"  # mm, in, px
-  dpi: 96  # For px to mm conversion
-  invert_y: true  # Invert Y coordinates (SVG has Y=0 at top)
-  origin: "bottom-left"  # bottom-left, center, top-left
+  default_units: "px"  # (CURRENTLY UNUSED) units are assumed pixels by agreement
+  dpi: 96              # (CURRENTLY UNUSED) only for px conversion if enabled later
+  invert_y: true       # (USED) flips SVG Y-down into machine Y-up
+  origin: "bottom-left"  # (CURRENTLY UNUSED) placeholder for future origin modes
 
+# U axis parameters (Brush A flow control)
+u_axis:
+  min: 0.0    # (USED) fully closed position (mm of stepper travel)
+  max: 4.0    # (USED) fully open position
+  dead_zone: 0.8  # (USED) below this, treated as off to avoid dribble
+  feedrate: 200   # (USED) movement speed for U axis (keep modest)
+
+# V axis parameters (Brush B flow control)
+v_axis:
+  min: 0.0    # (USED) fully closed position
+  max: 4.0    # (USED) fully open position
+  dead_zone: 0.8  # (USED) below this, treated as off
+  feedrate: 200   # (USED) movement speed for V axis
+
+# Airbrush mapping (global defaults). Note: current code reads these from
+# an optional "airbrush" section; these top-level keys are (CURRENTLY UNUSED).
+# They remain here for reference; future releases may relocate or remove them.
+paint_flow_base: 0.05           # (CURRENTLY UNUSED) prefer airbrush.flow_min/flow_max
+paint_flow_max: 0.9             # (CURRENTLY UNUSED)
+paint_flow_width_factor: 0.01   # (CURRENTLY UNUSED) prefer airbrush.flow_width_factor
+paint_flow_opacity_factor: 0.1   # (CURRENTLY UNUSED)
+feedrate_z_exponent: 1.2        # (CURRENTLY UNUSED)
+feedrate_min: 1000              # (CURRENTLY UNUSED) prefer airbrush.feedrate_min
+
+# Tool definitions
 tools:
   tool0:
     name: "Black"
     color: "#000000"
-    min_width: 0.3  # mm
-    max_width: 2.0  # mm
-    width_to_flow_factor: 1.0  # Flow multiplier based on width
+    min_width: 2.0   # mm  # (USED) stroke widths are clamped to [min,max]
+    max_width: 25.0  # mm  # (USED)
+    width_to_flow_factor: 1.0  # (CURRENTLY UNUSED) per-tool flow tuning uses other keys
   tool1:
     name: "White"
     color: "#FFFFFF"
-    min_width: 0.3  # mm
-    max_width: 2.0  # mm
-    width_to_flow_factor: 1.0  # Flow multiplier based on width 
+    min_width: 2.0   # mm  # (USED)
+    max_width: 25.0  # mm  # (USED)
+    width_to_flow_factor: 1.0  # (CURRENTLY UNUSED)
+
+# Base feedrate (CURRENTLY UNUSED). Drawing speed is computed from opacity
+# and clamped by airbrush/feedrate_min/max and machine limits.
+base_feedrate: 24000 

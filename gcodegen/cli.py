@@ -14,7 +14,7 @@ import yaml
 from lxml import etree
 
 from gcodegen.config import load_config
-from gcodegen.svg import SVGDocument, SVGPath
+from gcodegen.svg import SVGDocument, SVGPath, PX_TO_MM
 from gcodegen.path_processor import PathProcessor
 from gcodegen.airbrush import AirbrushController
 from gcodegen.gcode import GCodeGenerator
@@ -129,6 +129,18 @@ def convert_svg_to_gcode(svg_file: Path, gcode_file: Path, config: Dict, units: 
         paths = svg_doc.get_paths()
         logger.info(f"Found {len(paths)} paths in SVG")
         
+        # Determine if we should invert Y (SVG Y+ is down; machine Y+ is up)
+        svg_cfg = config.get("svg", {}) if isinstance(config, dict) else {}
+        invert_y = bool(svg_cfg.get("invert_y", True))
+        vy = 0.0
+        vh = 0.0
+        try:
+            vy = float(svg_doc.viewbox[1]) if svg_doc.viewbox else 0.0
+            vh = float(svg_doc.viewbox[3]) if svg_doc.viewbox else 0.0
+        except Exception:
+            vy, vh = 0.0, 0.0
+        doc_height = float(svg_doc.height) if hasattr(svg_doc, "height") else 0.0
+        
         for i, svg_path in enumerate(paths):
             # Extract path data and attributes
             path_data = svg_path.path_data
@@ -151,6 +163,17 @@ def convert_svg_to_gcode(svg_file: Path, gcode_file: Path, config: Dict, units: 
             for x, y in polyline:
                 # Apply the path's transformation matrix
                 tx, ty = svg_path.apply_transform(x, y)
+                # Flip Y to machine coordinates if configured
+                if invert_y:
+                    if vh and vh > 0.0:
+                        # y' = (2*vy + vh) - ty flips within viewBox coordinates
+                        ty = (2.0 * vy + vh) - ty
+                    elif doc_height and doc_height > 0.0:
+                        # Fallback to document height
+                        ty = doc_height - ty
+                # Convert SVG user units (px at 96 PPI) to millimeters
+                tx *= PX_TO_MM
+                ty *= PX_TO_MM
                 transformed_polyline.append((tx, ty))
             
             # Generate G-code for the path

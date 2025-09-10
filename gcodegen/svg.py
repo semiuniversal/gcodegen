@@ -18,6 +18,10 @@ logger = logging.getLogger(__name__)
 # SVG namespace
 SVG_NS = "{http://www.w3.org/2000/svg}"
 
+# Unit conversion (SVG engine uses 96 px/in)
+# 1 px = 25.4 / 96 mm
+PX_TO_MM = 25.4 / 96.0
+
 
 class SVGDocument:
     """Class for handling SVG document parsing and data extraction."""
@@ -141,6 +145,7 @@ class SVGPath:
         self.style = self._parse_style(path_element.get("style", ""))
         self.stroke_width = self._get_stroke_width()
         self.stroke_color = self._get_stroke_color()
+        self.stroke_opacity = self._get_stroke_opacity()
         self.segments = self._parse_path_data()
         
     def _parse_style(self, style_str: str) -> Dict[str, str]:
@@ -178,8 +183,22 @@ class SVGPath:
             
         # Parse value
         if width:
+            s = width.strip().lower()
+            # Determine unit and convert to mm (SVG uses px if unitless)
             try:
-                return float(width.replace("px", ""))
+                if s.endswith("mm"):
+                    return float(s[:-2].strip())
+                if s.endswith("cm"):
+                    return float(s[:-2].strip()) * 10.0
+                if s.endswith("in"):
+                    return float(s[:-2].strip()) * 25.4
+                if s.endswith("pt"):
+                    # 1 pt = 1/72 in
+                    return float(s[:-2].strip()) * (25.4 / 72.0)
+                if s.endswith("px"):
+                    return float(s[:-2].strip()) * PX_TO_MM
+                # Unitless: treat as px at 96 PPI
+                return float(s) * PX_TO_MM
             except ValueError:
                 pass
                 
@@ -201,6 +220,29 @@ class SVGPath:
             
         # Default value
         return color or "#000000"
+
+    def _get_stroke_opacity(self) -> float:
+        """Get stroke opacity from element attributes or style.
+        
+        Returns:
+            Stroke opacity as float
+        """
+        # Check direct attribute first
+        opacity = self.element.get("stroke-opacity")
+        
+        # Then check style dictionary
+        if not opacity and "stroke-opacity" in self.style:
+            opacity = self.style["stroke-opacity"]
+            
+        # Parse value
+        if opacity:
+            try:
+                return float(opacity)
+            except ValueError:
+                pass
+                
+        # Default value
+        return 1.0
         
     def add_transform(self, transform_str: str):
         """Add a transform to the path's transform chain.
@@ -326,6 +368,18 @@ class SVGPath:
         
         # Return as tuple
         return (transformed[0], transformed[1])
+        
+    def apply_transform(self, x: float, y: float) -> Tuple[float, float]:
+        """Apply transform to a point - alias for transform_point for compatibility.
+        
+        Args:
+            x: X coordinate
+            y: Y coordinate
+            
+        Returns:
+            Transformed (x, y) coordinates
+        """
+        return self.transform_point(x, y)
 
 
 def parse_svg(file_path: Union[str, Path]) -> SVGDocument:

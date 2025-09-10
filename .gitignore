@@ -38,5 +38,3 @@ wheels/
 *.log
 *.tmp
 
-# Generated G-code files
-gcode/
