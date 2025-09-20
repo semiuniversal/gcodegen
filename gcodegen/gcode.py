@@ -254,14 +254,32 @@ class GCodeGenerator:
         Returns:
             List of G-code start commands
         """
-        # Get start commands from config or use defaults
-        start_commands = self.config.get("gcode", {}).get("start_commands", [
-            "G21 ; Set units to millimeters",
-            "G90 ; Use absolute coordinates",
-            "M83 ; Use relative distances for extrusion",
-        ])
-        
-        return start_commands
+        # Get start commands from config or use minimal safe defaults
+        configured = self.config.get("gcode", {}).get("start_commands")
+        if not configured:
+            return [
+                "G21 ; Set units to millimeters",
+                "G90 ; Use absolute coordinates",
+            ]
+
+        # Filter out 3D-print specific or unsafe homing directives here; the
+        # airbrush initialization will handle homing as needed.
+        safe_commands: List[str] = []
+        for line in configured:
+            l = line.strip()
+            if l.startswith("M83"):
+                continue  # extruder-relative not applicable
+            if l.startswith("G28 ") and ("X" in l or "Y" in l or "Z" in l):
+                continue  # axis-specific homing may be disallowed on some setups
+            if l.startswith("G0") or l.startswith("G1"):
+                continue  # avoid any motion before our controlled init
+            safe_commands.append(l)
+        if not safe_commands:
+            safe_commands = [
+                "G21 ; Set units to millimeters",
+                "G90 ; Use absolute coordinates",
+            ]
+        return safe_commands
         
     def generate_end_commands(self) -> List[str]:
         """Generate end commands.

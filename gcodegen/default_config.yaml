@@ -73,15 +73,15 @@ v_axis:
   dead_zone: 0.8  # (USED) below this, treated as off
   feedrate: 200   # (USED) movement speed for V axis
 
-# Airbrush mapping (global defaults). Note: current code reads these from
-# an optional "airbrush" section; these top-level keys are (CURRENTLY UNUSED).
-# They remain here for reference; future releases may relocate or remove them.
-paint_flow_base: 0.05           # (CURRENTLY UNUSED) prefer airbrush.flow_min/flow_max
-paint_flow_max: 0.5             # (CURRENTLY UNUSED)
-paint_flow_width_factor: 0.01   # (CURRENTLY UNUSED) prefer airbrush.flow_width_factor
-paint_flow_opacity_factor: 0.1   # (CURRENTLY UNUSED)
-feedrate_z_exponent: 1.2        # (CURRENTLY UNUSED)
-feedrate_min: 1000              # (CURRENTLY UNUSED) prefer airbrush.feedrate_min
+airbrush:
+  # Defaults for deterministic mapping; can be overridden per tool below
+  feedrate_min: 6000            # (USED) mm/min floor
+  feedrate_max: 24000           # (USED) mm/min ceiling
+  opacity_speed_gamma: 1.8      # (USED) curve for opacity→speed
+  flow_min: 0.10                # (USED) 0..1 internal flow
+  flow_max: 1.00                # (USED)
+  flow_width_factor: 0.05       # (USED) extra flow for wider strokes
+  viscosity: 0.50               # (USED) 0.0 thin … 1.0 thick; biases speed/flow
 
 # Tool definitions
 tools:
@@ -90,14 +90,29 @@ tools:
     color: "#000000"
     min_width: 2.0   # mm  # (USED) stroke widths are clamped to [min,max]
     max_width: 20.0  # mm  # (USED)
-    width_to_flow_factor: 1.0  # (CURRENTLY UNUSED) per-tool flow tuning uses other keys
+    # Per-tool overrides for paint/ink differences
+    viscosity: 0.60          # (USED) this brush tends thicker by default
+    v_min: 6000              # (USED) override feedrate min
+    v_max: 24000             # (USED) override feedrate max
+    opacity_gamma: 1.8       # (USED) override mapping curve
+    p_min: 0.10              # (USED) override flow min
+    p_max: 1.00              # (USED) override flow max
+    flow_scale: 1.00         # (USED) multiplicative
+    flow_offset: 0.00        # (USED) additive
+    flow_width_factor: 0.05  # (USED)
   tool1:
     name: "White"
     color: "#FFFFFF"
     min_width: 2.0   # mm  # (USED)
     max_width: 20.0  # mm  # (USED)
-    width_to_flow_factor: 1.0  # (CURRENTLY UNUSED)
+    viscosity: 0.40
+    v_min: 6000
+    v_max: 24000
+    opacity_gamma: 1.8
+    p_min: 0.10
+    p_max: 1.00
+    flow_scale: 1.00
+    flow_offset: 0.00
+    flow_width_factor: 0.05
 
-# Base feedrate (CURRENTLY UNUSED). Drawing speed is computed from opacity
-# and clamped by airbrush/feedrate_min/max and machine limits.
-base_feedrate: 48000 
+# Deprecated keys removed. See 'airbrush' + per-tool overrides above.

@@ -1,0 +1,1 @@
+abort "Use Home All (G28) only — individual Y axis homing disabled"

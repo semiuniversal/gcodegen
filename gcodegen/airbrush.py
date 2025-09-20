@@ -65,6 +65,8 @@ class AirbrushController:
         self.feedrate_min_default = float(self.config.get("airbrush", {}).get("feedrate_min", 6000.0))
         self.feedrate_max_default = float(self.config.get("airbrush", {}).get("feedrate_max", self.travel_speed))
         self.opacity_speed_gamma_default = float(self.config.get("airbrush", {}).get("opacity_speed_gamma", 1.8))
+        # Viscosity default (0.0 thin .. 1.0 thick)
+        self.viscosity_default = float(self.config.get("airbrush", {}).get("viscosity", 0.5))
 
         # Paint flow computation defaults
         self.flow_min_default = float(self.config.get("airbrush", {}).get("flow_min", 0.10))
@@ -136,16 +138,17 @@ class AirbrushController:
 
         skip_homing = bool(self.config.get("machine", {}).get("skip_homing", False))
         if not skip_homing:
-            commands.append("G28 ; Home X, Y, Z axes")
-            commands.append("G28 U ; Home U axis (Brush A flow control)")
-            commands.append("G28 V ; Home V axis (Brush B flow control)")
+            # Home All (RRF will run homeall.g which also homes U/V)
+            commands.append("G28 ; Home all axes")
+            # After homing, logical Z is at max per machine scripts; align internal state
+            self.current_z = self.z_max
 
         # Initialize Z only if needed
         if self.current_z < self.safe_z_threshold:
             commands.append(f"G1 Z{self.z_travel:.3f} F{self.z_speed:.3f} ; Raise to safe Z at init")
             commands.append("M400 ; Wait for Z movement to complete")
             self.current_z = self.z_travel
-        commands.append(f"G92 Z{self.current_z:.3f} ; Set Z height")
+        # Do not override firmware-set logical Z with G92 here
         commands.append("M84 S0 ; No stepper timeout")
 
         commands.append("; ===== AIRBRUSH SYSTEM INITIALIZATION =====")
@@ -275,7 +278,23 @@ class AirbrushController:
         base_flow = flow_min + o * (flow_max - flow_min) + k_w * norm_width
         flow_scale = float(tool_cfg.get("flow_scale", 1.0)) if isinstance(tool_cfg, dict) else 1.0
         flow_offset = float(tool_cfg.get("flow_offset", 0.0)) if isinstance(tool_cfg, dict) else 0.0
-        paint_flow = max(flow_min, min(flow_max, base_flow * flow_scale + flow_offset))
+
+        # Single viscosity knob (0 = thin, 1 = thick). Per-tool overrides allowed.
+        viscosity = float(tool_cfg.get("viscosity", self.viscosity_default)) if isinstance(tool_cfg, dict) else self.viscosity_default
+        viscosity = max(0.0, min(1.0, viscosity))
+        # Map viscosity to multipliers/offsets
+        # Thin → slightly faster, slightly less flow; Thick → slower, more flow, positive offset
+        feedrate_multiplier = 1.10 + (0.75 - 1.10) * viscosity
+        visc_flow_scale = 0.90 + (1.30 - 0.90) * viscosity
+        visc_flow_offset = -0.05 + (0.10 + 0.05) * viscosity  # -0.05 .. +0.10
+
+        # Apply viscosity effects
+        feedrate *= feedrate_multiplier
+        # Final clamp for feedrate
+        feedrate = max(v_min, min(v_max, feedrate))
+
+        paint_flow = base_flow * flow_scale * visc_flow_scale + (flow_offset + visc_flow_offset)
+        paint_flow = max(flow_min, min(flow_max, paint_flow))
 
         return z_height, paint_flow, feedrate
 
