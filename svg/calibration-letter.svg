@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Calibration pattern: Letter (8.5x11in, 96 PPI => 816x1056 px)
+     - Width ladder: increasing stroke widths
+     - Opacity ladder: varying opacity at constant width
+     Coordinates are in pixels (96 PPI); our pipeline converts to mm.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="816" height="1056" viewBox="0 0 816 1056">
+  <g id="margin" fill="none" stroke="#888" stroke-width="1" opacity="0.2">
+    <rect x="48" y="48" width="720" height="960" />
+  </g>
+
+  <!-- Title -->
+  <g font-family="DejaVu Sans, Arial, Helvetica" font-size="18" fill="#000" opacity="0.6">
+    <text x="60" y="78">H.Airbrush Calibration – Width and Opacity Ladders (Letter 8.5x11in)</text>
+  </g>
+
+  <!-- Width ladder (stroke-width in px; engine converts to mm). Use <path> so parser picks them up. -->
+  <g id="width-ladder" stroke="#000" fill="none">
+    <!-- Start at y=140, 11 lines, widths ~0.5mm..10mm (px approx) -->
+    <!-- mm to px @96 PPI ≈ mm / 0.264583 -->
+    <path d="M 80 140 L 736 140" stroke-width="2" />   <!-- ~0.53mm -->
+    <path d="M 80 165 L 736 165" stroke-width="3" />   <!-- ~0.79mm -->
+    <path d="M 80 190 L 736 190" stroke-width="4" />
+    <path d="M 80 220 L 736 220" stroke-width="6" />
+    <path d="M 80 255 L 736 255" stroke-width="8" />
+    <path d="M 80 295 L 736 295" stroke-width="10" />
+    <path d="M 80 340 L 736 340" stroke-width="14" />
+    <path d="M 80 390 L 736 390" stroke-width="18" />
+    <path d="M 80 445 L 736 445" stroke-width="24" />
+    <path d="M 80 505 L 736 505" stroke-width="30" />
+    <path d="M 80 570 L 736 570" stroke-width="38" />   <!-- ~10mm -->
+  </g>
+
+  <!-- Opacity ladder (constant width ~3mm => ~11px). Use <path> for compatibility. -->
+  <g id="opacity-ladder" stroke="#000" stroke-width="11" fill="none">
+    <path d="M 80 660 L 736 660" opacity="0.20" />
+    <path d="M 80 695 L 736 695" opacity="0.30" />
+    <path d="M 80 730 L 736 730" opacity="0.40" />
+    <path d="M 80 765 L 736 765" opacity="0.50" />
+    <path d="M 80 800 L 736 800" opacity="0.60" />
+    <path d="M 80 835 L 736 835" opacity="0.70" />
+    <path d="M 80 870 L 736 870" opacity="0.80" />
+  </g>
+
+  <!-- Notes -->
+  <g font-family="DejaVu Sans, Arial, Helvetica" font-size="14" fill="#000" opacity="0.55">
+    <text x="60" y="615">Width ladder: thin (top) to thick (bottom). Use to set Z/width behavior.</text>
+    <text x="60" y="910">Opacity ladder: 0.2 → 0.8. Use to dial viscosity/flow and speed feel.</text>
+  </g>
+</svg>
+

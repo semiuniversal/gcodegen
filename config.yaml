@@ -73,7 +73,7 @@ airbrush:
   flow_min: 0.10                # (USED) 0..1 internal flow
   flow_max: 1.00                # (USED)
   flow_width_factor: 0.05       # (USED) extra flow for wider strokes
-  viscosity: 0.50               # (USED) 0.0 thin … 1.0 thick
+  viscosity: 0.50               # (USED) 0.00 water, 0.50 milk, 1.00 heavy cream
 
 # Tool definitions
 tools:
