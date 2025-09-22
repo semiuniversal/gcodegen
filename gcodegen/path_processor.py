@@ -86,6 +86,9 @@ class PathProcessor:
         polyline = []
         current_x, current_y = 0.0, 0.0
         subpath_start_x, subpath_start_y = 0.0, 0.0
+        # Track previous control point for smooth curves
+        prev_cubic_ctrl_x2, prev_cubic_ctrl_y2 = None, None
+        prev_quadratic_ctrl_x, prev_quadratic_ctrl_y = None, None
         
         for cmd in path_commands:
             command = cmd.command
@@ -103,6 +106,9 @@ class PathProcessor:
                             # Subsequent points are treated as implicit line commands
                             current_x, current_y = params[i], params[i+1]
                         polyline.append((current_x, current_y))
+                    # Reset smooth curve state at subpath start
+                    prev_cubic_ctrl_x2, prev_cubic_ctrl_y2 = None, None
+                    prev_quadratic_ctrl_x, prev_quadratic_ctrl_y = None, None
                 else:  # Relative
                     for i in range(0, len(params), 2):
                         if i == 0:
@@ -114,6 +120,8 @@ class PathProcessor:
                             current_x += params[i]
                             current_y += params[i+1]
                         polyline.append((current_x, current_y))
+                    prev_cubic_ctrl_x2, prev_cubic_ctrl_y2 = None, None
+                    prev_quadratic_ctrl_x, prev_quadratic_ctrl_y = None, None
                         
             elif command in 'Ll':
                 # Line command
@@ -164,6 +172,8 @@ class PathProcessor:
                         polyline.extend(points)
                         
                         current_x, current_y = x, y
+                        prev_cubic_ctrl_x2, prev_cubic_ctrl_y2 = x2, y2
+                        prev_quadratic_ctrl_x, prev_quadratic_ctrl_y = None, None
                 else:  # Relative
                     for i in range(0, len(params), 6):
                         x1, y1 = current_x + params[i], current_y + params[i+1]
@@ -177,17 +187,18 @@ class PathProcessor:
                         polyline.extend(points)
                         
                         current_x, current_y = x, y
+                        prev_cubic_ctrl_x2, prev_cubic_ctrl_y2 = x2, y2
+                        prev_quadratic_ctrl_x, prev_quadratic_ctrl_y = None, None
                         
             elif command in 'Ss':
                 # Smooth cubic Bézier curve command
                 # First control point is reflection of previous control point
-                if len(polyline) < 1:
-                    # If no previous command, treat as a regular cubic Bézier
-                    # with the first control point coincident with the current point
+                # Determine the first control point by reflecting the previous cubic control point
+                if prev_cubic_ctrl_x2 is None or prev_cubic_ctrl_y2 is None:
                     prev_x2, prev_y2 = current_x, current_y
                 else:
-                    # Reflect the previous control point
-                    prev_x2, prev_y2 = current_x, current_y  # Default if no previous control point
+                    prev_x2 = 2 * current_x - prev_cubic_ctrl_x2
+                    prev_y2 = 2 * current_y - prev_cubic_ctrl_y2
                 
                 if command == 'S':  # Absolute
                     for i in range(0, len(params), 4):
@@ -204,8 +215,9 @@ class PathProcessor:
                         )
                         polyline.extend(points)
                         
-                        prev_x2, prev_y2 = x2, y2
+                        prev_cubic_ctrl_x2, prev_cubic_ctrl_y2 = x2, y2
                         current_x, current_y = x, y
+                        prev_quadratic_ctrl_x, prev_quadratic_ctrl_y = None, None
                 else:  # Relative
                     for i in range(0, len(params), 4):
                         x2, y2 = current_x + params[i], current_y + params[i+1]
@@ -221,8 +233,100 @@ class PathProcessor:
                         )
                         polyline.extend(points)
                         
-                        prev_x2, prev_y2 = x2, y2
+                        prev_cubic_ctrl_x2, prev_cubic_ctrl_y2 = x2, y2
                         current_x, current_y = x, y
+                        prev_quadratic_ctrl_x, prev_quadratic_ctrl_y = None, None
+
+            elif command in 'Qq':
+                # Quadratic Bézier curve command
+                if command == 'Q':  # Absolute
+                    for i in range(0, len(params), 4):
+                        x1, y1 = params[i], params[i+1]
+                        x, y = params[i+2], params[i+3]
+                        points = PathProcessor._quadratic_bezier_to_polyline(
+                            current_x, current_y, x1, y1, x, y, curve_resolution
+                        )
+                        polyline.extend(points)
+                        current_x, current_y = x, y
+                        prev_quadratic_ctrl_x, prev_quadratic_ctrl_y = x1, y1
+                        prev_cubic_ctrl_x2, prev_cubic_ctrl_y2 = None, None
+                else:  # Relative
+                    for i in range(0, len(params), 4):
+                        x1, y1 = current_x + params[i], current_y + params[i+1]
+                        x, y = current_x + params[i+2], current_y + params[i+3]
+                        points = PathProcessor._quadratic_bezier_to_polyline(
+                            current_x, current_y, x1, y1, x, y, curve_resolution
+                        )
+                        polyline.extend(points)
+                        current_x, current_y = x, y
+                        prev_quadratic_ctrl_x, prev_quadratic_ctrl_y = x1, y1
+                        prev_cubic_ctrl_x2, prev_cubic_ctrl_y2 = None, None
+
+            elif command in 'Tt':
+                # Smooth quadratic Bézier curve (control point is reflection of previous)
+                if prev_quadratic_ctrl_x is None or prev_quadratic_ctrl_y is None:
+                    ref_x, ref_y = current_x, current_y
+                else:
+                    ref_x = 2 * current_x - prev_quadratic_ctrl_x
+                    ref_y = 2 * current_y - prev_quadratic_ctrl_y
+                if command == 'T':  # Absolute
+                    for i in range(0, len(params), 2):
+                        x, y = params[i], params[i+1]
+                        points = PathProcessor._quadratic_bezier_to_polyline(
+                            current_x, current_y, ref_x, ref_y, x, y, curve_resolution
+                        )
+                        polyline.extend(points)
+                        prev_quadratic_ctrl_x, prev_quadratic_ctrl_y = ref_x, ref_y
+                        current_x, current_y = x, y
+                        # Next reflection uses the last implicit control
+                        ref_x = 2 * current_x - prev_quadratic_ctrl_x
+                        ref_y = 2 * current_y - prev_quadratic_ctrl_y
+                        prev_cubic_ctrl_x2, prev_cubic_ctrl_y2 = None, None
+                else:  # Relative
+                    for i in range(0, len(params), 2):
+                        x, y = current_x + params[i], current_y + params[i+1]
+                        points = PathProcessor._quadratic_bezier_to_polyline(
+                            current_x, current_y, ref_x, ref_y, x, y, curve_resolution
+                        )
+                        polyline.extend(points)
+                        prev_quadratic_ctrl_x, prev_quadratic_ctrl_y = ref_x, ref_y
+                        current_x, current_y = x, y
+                        ref_x = 2 * current_x - prev_quadratic_ctrl_x
+                        ref_y = 2 * current_y - prev_quadratic_ctrl_y
+                        prev_cubic_ctrl_x2, prev_cubic_ctrl_y2 = None, None
+
+            elif command in 'Aa':
+                # Elliptical arc command
+                if command == 'A':  # Absolute
+                    for i in range(0, len(params), 7):
+                        rx, ry = params[i], params[i+1]
+                        x_axis_rotation = params[i+2]
+                        large_arc_flag = bool(int(params[i+3]))
+                        sweep_flag = bool(int(params[i+4]))
+                        x, y = params[i+5], params[i+6]
+                        points = PathProcessor._arc_to_polyline(
+                            current_x, current_y, rx, ry, x_axis_rotation,
+                            large_arc_flag, sweep_flag, x, y, curve_resolution
+                        )
+                        polyline.extend(points)
+                        current_x, current_y = x, y
+                        prev_cubic_ctrl_x2, prev_cubic_ctrl_y2 = None, None
+                        prev_quadratic_ctrl_x, prev_quadratic_ctrl_y = None, None
+                else:  # Relative
+                    for i in range(0, len(params), 7):
+                        rx, ry = params[i], params[i+1]
+                        x_axis_rotation = params[i+2]
+                        large_arc_flag = bool(int(params[i+3]))
+                        sweep_flag = bool(int(params[i+4]))
+                        x, y = current_x + params[i+5], current_y + params[i+6]
+                        points = PathProcessor._arc_to_polyline(
+                            current_x, current_y, rx, ry, x_axis_rotation,
+                            large_arc_flag, sweep_flag, x, y, curve_resolution
+                        )
+                        polyline.extend(points)
+                        current_x, current_y = x, y
+                        prev_cubic_ctrl_x2, prev_cubic_ctrl_y2 = None, None
+                        prev_quadratic_ctrl_x, prev_quadratic_ctrl_y = None, None
                         
             elif command in 'Zz':
                 # Close path command - draw line back to subpath start
@@ -230,10 +334,38 @@ class PathProcessor:
                     polyline.append((subpath_start_x, subpath_start_y))
                 current_x, current_y = subpath_start_x, subpath_start_y
                 
-            # Note: We're skipping Q, T, and A commands for now as they're less common
-            # These can be added later if needed
+            # Other command types are ignored for now (unsupported)
                 
         return polyline
+
+    @staticmethod
+    def densify_polyline(points: List[Tuple[float, float]], max_segment_length_mm: float) -> List[Tuple[float, float]]:
+        """Insert intermediate points so no segment exceeds max_segment_length_mm.
+
+        Args:
+            points: Input polyline points in millimeters
+            max_segment_length_mm: Maximum allowed segment length in mm (<=0 to disable)
+
+        Returns:
+            New list of points with densified segments
+        """
+        if not points or max_segment_length_mm is None or max_segment_length_mm <= 0:
+            return points
+        densified: List[Tuple[float, float]] = []
+        prev_x, prev_y = points[0]
+        densified.append((prev_x, prev_y))
+        for x, y in points[1:]:
+            dx = x - prev_x
+            dy = y - prev_y
+            dist = math.hypot(dx, dy)
+            if dist > max_segment_length_mm:
+                num_segments = max(1, int(math.ceil(dist / max_segment_length_mm)))
+                for i in range(1, num_segments):
+                    t = i / float(num_segments)
+                    densified.append((prev_x + t * dx, prev_y + t * dy))
+            densified.append((x, y))
+            prev_x, prev_y = x, y
+        return densified
     
     @staticmethod
     def _cubic_bezier_to_polyline(

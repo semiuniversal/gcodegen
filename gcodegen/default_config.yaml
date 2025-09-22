@@ -58,6 +58,8 @@ svg:
   dpi: 96              # (CURRENTLY UNUSED) only for px conversion if enabled later
   invert_y: true       # (USED) flips SVG Y-down into machine Y-up
   origin: "bottom-left"  # (CURRENTLY UNUSED) placeholder for future origin modes
+  curve_resolution: 24         # (USED) sampling for Bezier/arc to polyline
+  max_segment_length_mm: 1.5   # (USED) densify segments longer than this (mm)
 
 # U axis parameters (Brush A flow control)
 u_axis:
@@ -82,6 +84,7 @@ airbrush:
   flow_max: 1.00                # (USED)
   flow_width_factor: 0.05       # (USED) extra flow for wider strokes
   viscosity: 0.50               # (USED) viscosity scale: 0.00 water, 0.50 milk, 1.00 heavy cream
+  paint_lead_ms: 50             # (USED) delay after pre-opening paint before XY motion
 
 # Tool definitions
 tools:

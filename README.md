@@ -53,6 +53,20 @@ For calibrating Tool 1 (Brush B, white ink), use the white variant and print on 
 uv run gcodegen --input svg/calibration-letter-white.svg --output gcode/calibration-letter-white.gcode --config config.yaml
 ```
 
+### Troubleshooting
+
+- Starts of lines look faint or delayed:
+  - Increase `airbrush.paint_lead_ms` (e.g., 80–120). This adds a short delay after pre-opening paint before XY motion.
+  - Ensure feedrate is set at stroke start; the generator does this automatically.
+- End of lines leave a splotch:
+  - The generator ramps paint flow down on the final segment. If blot persists, slightly decrease `svg.max_segment_length_mm` (e.g., from 1.5 → 1.0) so ramp-down spans a shorter segment.
+- Shaky motion or “fast jumps” while painting curves:
+  - Increase sampling density: raise `svg.curve_resolution` (e.g., 24 → 36) and/or reduce `svg.max_segment_length_mm` (e.g., 1.5 → 0.8).
+- Width/opacity don’t match expectations:
+  - Adjust per-tool `viscosity`, `flow_scale`, and `flow_offset`. Lower viscosity for thinner paints; raise for thicker.
+
+Regenerate shipped G-code after config changes to ensure consistency before printing.
+
 ## Development
 
 This project uses:

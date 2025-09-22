@@ -155,8 +155,10 @@ def convert_svg_to_gcode(svg_file: Path, gcode_file: Path, config: Dict, units: 
             # Parse path data into commands
             path_commands = PathProcessor.parse_path(path_data)
             
+            # Curve sampling configuration
+            curve_resolution = int(svg_cfg.get("curve_resolution", 20))
             # Convert path commands to polyline
-            polyline = PathProcessor.path_to_polyline(path_commands)
+            polyline = PathProcessor.path_to_polyline(path_commands, curve_resolution=curve_resolution)
             
             # Apply SVG transformations to polyline
             transformed_polyline = []
@@ -175,6 +177,11 @@ def convert_svg_to_gcode(svg_file: Path, gcode_file: Path, config: Dict, units: 
                 tx *= PX_TO_MM
                 ty *= PX_TO_MM
                 transformed_polyline.append((tx, ty))
+            
+            # Densify long segments after unit conversion
+            max_seg_len = float(svg_cfg.get("max_segment_length_mm", 0.0))
+            if max_seg_len and max_seg_len > 0.0:
+                transformed_polyline = PathProcessor.densify_polyline(transformed_polyline, max_seg_len)
             
             # Generate G-code for the path
             path_gcode = airbrush.generate_path_commands(

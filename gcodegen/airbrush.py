@@ -72,6 +72,8 @@ class AirbrushController:
         self.flow_min_default = float(self.config.get("airbrush", {}).get("flow_min", 0.10))
         self.flow_max_default = float(self.config.get("airbrush", {}).get("flow_max", 1.00))
         self.flow_width_factor_default = float(self.config.get("airbrush", {}).get("flow_width_factor", 0.05))
+        # Air/Paint timing
+        self.paint_lead_ms_default = float(self.config.get("airbrush", {}).get("paint_lead_ms", 50.0))
 
         # Brush state tracking
         self.brush_a_active = False
@@ -386,22 +388,35 @@ class AirbrushController:
             commands.append("M400 ; Wait for Z movement to complete")
             self.current_z = z_height
 
-        # Set feedrate once per stroke, then start air
+        # Set feedrate once per stroke
         commands.append(f"G1 F{feedrate:.3f}")
-        commands.append(f"M106 P{air_fan} S1 ; Air on at motion start")
+        # Air ON before enabling paint
+        commands.append(f"M106 P{air_fan} S1 ; Air on before paint")
+        # Pre-open paint flow slightly above dead zone, then immediately start XY
+        preflow = min(flow_position, axis_dead + 0.050)
+        commands.append(f"G1 {axis}{preflow:.3f} F{axis_feed} ; Pre-open paint slightly above dead zone")
+        # Restore XY feedrate before XY motion (axis-only move changed modal F)
+        commands.append(f"G1 F{feedrate:.3f}")
+        # Optional very short lead dwell (default 0)
+        paint_lead_ms = int(max(0.0, float(self.paint_lead_ms_default)))
+        if paint_lead_ms > 0:
+            commands.append(f"G4 P{paint_lead_ms} ; Short paint lead time")
 
-        # Draw path; first move also ramps U/V to target flow to avoid start dot
-        first = True
-        for x, y in polyline[1:]:
-            if first:
+        # Draw path; ramp paint up to target on first segment, and ramp down during final segment to avoid end splotch
+        num_points = len(polyline)
+        for idx, (x, y) in enumerate(polyline[1:], start=1):
+            if idx == 1:
+                # First segment: ramp up flow to target while moving
                 commands.append(f"G1 X{x:.3f} Y{y:.3f} {axis}{flow_position:.3f}")
-                first = False
+            elif idx == num_points - 1:
+                # Final segment: ramp flow down to dead zone so paint stops by segment end
+                commands.append(f"G1 X{x:.3f} Y{y:.3f} {axis}{axis_dead:.3f}")
             else:
                 commands.append(f"G1 X{x:.3f} Y{y:.3f}")
 
         commands.append("M400 ; Wait for drawing to complete")
 
-        # Stop brush: close flow then air off (no extra dwell)
+        # Stop brush: flow closed and air off handled immediately after ramp-down
         commands.extend(self.stop_brush(brush_id))
 
         commands.append("; === PATH END ===\n")
