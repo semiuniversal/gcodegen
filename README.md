@@ -69,6 +69,7 @@ uv run gcodegen --input svg/calibration-letter-white.svg --output gcode/calibrat
 
 Regenerate shipped G-code after config changes to ensure consistency before printing.
 
+
 ## Development
 
 This project uses:

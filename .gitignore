@@ -38,3 +38,5 @@ wheels/
 *.log
 *.tmp
 
+# G-code files
+gcode/tests/
