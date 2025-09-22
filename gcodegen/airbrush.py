@@ -404,15 +404,25 @@ class AirbrushController:
 
         # Draw path; ramp paint up to target on first segment, and ramp down during final segment to avoid end splotch
         num_points = len(polyline)
+        feed_every = bool(self.config.get("airbrush", {}).get("feedrate_every_move", False))
         for idx, (x, y) in enumerate(polyline[1:], start=1):
             if idx == 1:
                 # First segment: ramp up flow to target while moving
-                commands.append(f"G1 X{x:.3f} Y{y:.3f} {axis}{flow_position:.3f}")
+                if feed_every:
+                    commands.append(f"G1 X{x:.3f} Y{y:.3f} {axis}{flow_position:.3f} F{feedrate:.3f}")
+                else:
+                    commands.append(f"G1 X{x:.3f} Y{y:.3f} {axis}{flow_position:.3f}")
             elif idx == num_points - 1:
                 # Final segment: ramp flow down to dead zone so paint stops by segment end
-                commands.append(f"G1 X{x:.3f} Y{y:.3f} {axis}{axis_dead:.3f}")
+                if feed_every:
+                    commands.append(f"G1 X{x:.3f} Y{y:.3f} {axis}{axis_dead:.3f} F{feedrate:.3f}")
+                else:
+                    commands.append(f"G1 X{x:.3f} Y{y:.3f} {axis}{axis_dead:.3f}")
             else:
-                commands.append(f"G1 X{x:.3f} Y{y:.3f}")
+                if feed_every:
+                    commands.append(f"G1 X{x:.3f} Y{y:.3f} F{feedrate:.3f}")
+                else:
+                    commands.append(f"G1 X{x:.3f} Y{y:.3f}")
 
         commands.append("M400 ; Wait for drawing to complete")
 

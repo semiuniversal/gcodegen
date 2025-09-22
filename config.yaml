@@ -77,6 +77,7 @@ airbrush:
   flow_width_factor: 0.05       # (USED) extra flow for wider strokes
   viscosity: 0.50               # (USED) 0.00 water, 0.50 milk, 1.00 heavy cream
   paint_lead_ms: 50             # (USED) delay after pre-opening paint before XY motion
+  feedrate_every_move: true    # (USED) emit F on every G1 segment for viewer compatibility
 
 # Tool definitions
 tools:
