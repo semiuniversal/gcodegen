@@ -77,7 +77,9 @@ airbrush:
   flow_width_factor: 0.05       # (USED) extra flow for wider strokes
   viscosity: 0.50               # (USED) 0.00 water, 0.50 milk, 1.00 heavy cream
   paint_lead_ms: 50             # (USED) delay after pre-opening paint before XY motion
-  feedrate_every_move: true    # (USED) emit F on every G1 segment for viewer compatibility
+  feedrate_every_move: true     # (USED) emit F on every G1 segment for viewer compatibility
+  viewer_compat: true           # (USED) keep U/V off XY lines for viewer rendering
+  viewer_emit_m3m5: true        # (USED) add M3/M5 hints at stroke start/end (viewer only)
 
 # Tool definitions
 tools:

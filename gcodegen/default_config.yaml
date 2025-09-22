@@ -86,6 +86,8 @@ airbrush:
   viscosity: 0.50               # (USED) viscosity scale: 0.00 water, 0.50 milk, 1.00 heavy cream
   paint_lead_ms: 50             # (USED) delay after pre-opening paint before XY motion
   feedrate_every_move: true    # (USED) emit F on every G1 segment for viewer compatibility
+  viewer_compat: false         # (USED) keep U/V off XY lines for viewer rendering
+  viewer_emit_m3m5: false      # (USED) add M3/M5 hints at stroke start/end (viewer only)
 
 # Tool definitions
 tools:

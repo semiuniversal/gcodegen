@@ -74,6 +74,9 @@ class AirbrushController:
         self.flow_width_factor_default = float(self.config.get("airbrush", {}).get("flow_width_factor", 0.05))
         # Air/Paint timing
         self.paint_lead_ms_default = float(self.config.get("airbrush", {}).get("paint_lead_ms", 50.0))
+        # Viewer compatibility options (do not affect machine behavior)
+        self.viewer_compat = bool(self.config.get("airbrush", {}).get("viewer_compat", False))
+        self.viewer_emit_m3m5 = bool(self.config.get("airbrush", {}).get("viewer_emit_m3m5", False))
 
         # Brush state tracking
         self.brush_a_active = False
@@ -360,6 +363,8 @@ class AirbrushController:
         commands.append(f"; Z-height: {z_height:.2f}mm")
         commands.append(f"; Paint flow: {paint_flow:.2f} -> {axis}{flow_position:.3f}mm")
         commands.append(f"; Feedrate: {feedrate:.1f}mm/min")
+        # Mode markers for diagnostics
+        commands.append(f"; Modes: viewer_compat={str(self.viewer_compat).lower()}, viewer_emit_m3m5={str(self.viewer_emit_m3m5).lower()}")
 
         # Start brush (tool and soft limits handling)
         commands.extend(self.start_brush(brush_id))
@@ -392,39 +397,65 @@ class AirbrushController:
         commands.append(f"G1 F{feedrate:.3f}")
         # Air ON before enabling paint
         commands.append(f"M106 P{air_fan} S1 ; Air on before paint")
-        # Pre-open paint flow slightly above dead zone, then immediately start XY
-        preflow = min(flow_position, axis_dead + 0.050)
-        commands.append(f"G1 {axis}{preflow:.3f} F{axis_feed} ; Pre-open paint slightly above dead zone")
-        # Restore XY feedrate before XY motion (axis-only move changed modal F)
-        commands.append(f"G1 F{feedrate:.3f}")
-        # Optional very short lead dwell (default 0)
-        paint_lead_ms = int(max(0.0, float(self.paint_lead_ms_default)))
-        if paint_lead_ms > 0:
-            commands.append(f"G4 P{paint_lead_ms} ; Short paint lead time")
 
-        # Draw path; ramp paint up to target on first segment, and ramp down during final segment to avoid end splotch
-        num_points = len(polyline)
+        # Viewer compatibility: avoid mixing U/V with XY, and optionally emit M3/M5
         feed_every = bool(self.config.get("airbrush", {}).get("feedrate_every_move", False))
-        for idx, (x, y) in enumerate(polyline[1:], start=1):
-            if idx == 1:
-                # First segment: ramp up flow to target while moving
-                if feed_every:
-                    commands.append(f"G1 X{x:.3f} Y{y:.3f} {axis}{flow_position:.3f} F{feedrate:.3f}")
-                else:
-                    commands.append(f"G1 X{x:.3f} Y{y:.3f} {axis}{flow_position:.3f}")
-            elif idx == num_points - 1:
-                # Final segment: ramp flow down to dead zone so paint stops by segment end
-                if feed_every:
-                    commands.append(f"G1 X{x:.3f} Y{y:.3f} {axis}{axis_dead:.3f} F{feedrate:.3f}")
-                else:
-                    commands.append(f"G1 X{x:.3f} Y{y:.3f} {axis}{axis_dead:.3f}")
-            else:
+        if self.viewer_compat:
+            # Move flow directly to target before XY
+            commands.append(f"G1 {axis}{flow_position:.3f} F{axis_feed} ; Set paint flow to target (viewer mode)")
+            # Restore XY feedrate before motion (axis-only move changed modal F)
+            commands.append(f"G1 F{feedrate:.3f}")
+            paint_lead_ms = int(max(0.0, float(self.paint_lead_ms_default)))
+            if paint_lead_ms > 0:
+                commands.append(f"G4 P{paint_lead_ms} ; Short paint lead time")
+            if self.viewer_emit_m3m5:
+                commands.append("M3 S1 ; Viewer hint: start cutting")
+
+            # Draw XY only moves (no axis terms)
+            for x, y in polyline[1:]:
                 if feed_every:
                     commands.append(f"G1 X{x:.3f} Y{y:.3f} F{feedrate:.3f}")
                 else:
                     commands.append(f"G1 X{x:.3f} Y{y:.3f}")
 
-        commands.append("M400 ; Wait for drawing to complete")
+            # Ramp flow down to dead zone after XY completes (separate axis move)
+            commands.append("M400 ; Wait for drawing to complete")
+            commands.append(f"G1 {axis}{axis_dead:.3f} F{axis_feed} ; Flow ramp-down (viewer mode)")
+            if self.viewer_emit_m3m5:
+                commands.append("M5 ; Viewer hint: stop cutting")
+        else:
+            # Non-viewer mode: pre-open slightly, ramp up on first segment, ramp down on final segment
+            preflow = min(flow_position, axis_dead + 0.050)
+            commands.append(f"G1 {axis}{preflow:.3f} F{axis_feed} ; Pre-open paint slightly above dead zone")
+            # Restore XY feedrate before XY motion (axis-only move changed modal F)
+            commands.append(f"G1 F{feedrate:.3f}")
+            paint_lead_ms = int(max(0.0, float(self.paint_lead_ms_default)))
+            if paint_lead_ms > 0:
+                commands.append(f"G4 P{paint_lead_ms} ; Short paint lead time")
+
+            num_points = len(polyline)
+            for idx, (x, y) in enumerate(polyline[1:], start=1):
+                if idx == 1:
+                    # First segment: ramp up flow to target while moving
+                    if feed_every:
+                        commands.append(f"G1 X{x:.3f} Y{y:.3f} {axis}{flow_position:.3f} F{feedrate:.3f}")
+                    else:
+                        commands.append(f"G1 X{x:.3f} Y{y:.3f} {axis}{flow_position:.3f}")
+                elif idx == num_points - 1:
+                    # Final segment: ramp flow down to dead zone so paint stops by segment end
+                    if feed_every:
+                        commands.append(f"G1 X{x:.3f} Y{y:.3f} {axis}{axis_dead:.3f} F{feedrate:.3f}")
+                    else:
+                        commands.append(f"G1 X{x:.3f} Y{y:.3f} {axis}{axis_dead:.3f}")
+                else:
+                    if feed_every:
+                        commands.append(f"G1 X{x:.3f} Y{y:.3f} F{feedrate:.3f}")
+                    else:
+                        commands.append(f"G1 X{x:.3f} Y{y:.3f}")
+
+        # Ensure motion complete before stopping brush (non-viewer branch already added M400 above)
+        if not self.viewer_compat:
+            commands.append("M400 ; Wait for drawing to complete")
 
         # Stop brush: flow closed and air off handled immediately after ramp-down
         commands.extend(self.stop_brush(brush_id))

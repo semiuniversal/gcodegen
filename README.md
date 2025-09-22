@@ -64,6 +64,8 @@ uv run gcodegen --input svg/calibration-letter-white.svg --output gcode/calibrat
   - Increase sampling density: raise `svg.curve_resolution` (e.g., 24 → 36) and/or reduce `svg.max_segment_length_mm` (e.g., 1.5 → 0.8).
 - Width/opacity don’t match expectations:
   - Adjust per-tool `viscosity`, `flow_scale`, and `flow_offset`. Lower viscosity for thinner paints; raise for thicker.
+- Viewer doesn’t show continuous strokes (if visualizing the gcode with tools like ncviewer.com):
+  - Enable `airbrush.viewer_compat: true` to keep U/V off XY lines (more viewer-friendly). Optional: `airbrush.viewer_emit_m3m5: true` to add M3/M5 hints for cutting visualization. These do not change machine behavior.
 
 Regenerate shipped G-code after config changes to ensure consistency before printing.
 
