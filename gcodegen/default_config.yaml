@@ -27,7 +27,7 @@ machine:
   safe_z: 10  # mm   # (USED) clearance height for non-drawing travel moves
   z_min: 4.0  # mm   # (USED) lower bound for Z (minimum achievable line width)
   z_max: 83.0 # mm   # (USED) upper bound for Z (maximum achievable line width)
-  travel_speed: 24000  # mm/min  # (USED) rapid moves between strokes
+  travel_speed: 12000  # mm/min  # (USED) rapid moves between strokes (reduced for smoother motion)
   work_speed: 3000     # mm/min  # (USED) baseline draw speed in some code paths
   z_speed: 1200        # mm/min  # (USED) speed for Z raises/lowers
   skip_homing: false             # (USED) if true, omits G28 homing in init
@@ -58,8 +58,8 @@ svg:
   dpi: 96              # (CURRENTLY UNUSED) only for px conversion if enabled later
   invert_y: true       # (USED) flips SVG Y-down into machine Y-up
   origin: "bottom-left"  # (CURRENTLY UNUSED) placeholder for future origin modes
-  curve_resolution: 24         # (USED) sampling for Bezier/arc to polyline
-  max_segment_length_mm: 1.5   # (USED) densify segments longer than this (mm)
+  curve_resolution: 36         # (USED) sampling for Bezier/arc to polyline (denser)
+  max_segment_length_mm: 0.8   # (USED) densify segments longer than this (mm)
 
 # U axis parameters (Brush A flow control)
 u_axis:
@@ -79,7 +79,7 @@ airbrush:
   # Defaults for deterministic mapping; can be overridden per tool below
   feedrate_min: 6000            # (USED) mm/min floor
   feedrate_max: 24000           # (USED) mm/min ceiling
-  opacity_speed_gamma: 2.0      # (USED) curve for opacity→speed (slightly slower for darker strokes)
+  opacity_speed_gamma: 2.2      # (USED) curve for opacity→speed (slower for darker strokes)
   flow_min: 0.10                # (USED) 0..1 internal flow
   flow_max: 1.00                # (USED)
   flow_width_factor: 0.05       # (USED) extra flow for wider strokes
@@ -98,8 +98,8 @@ tools:
     max_width: 20.0  # mm  # (USED)
     # Per-tool overrides for paint/ink differences
     viscosity: 0.60          # (USED) this brush tends thicker by default
-    v_min: 6000              # (USED) override feedrate min
-    v_max: 10000             # (USED) override feedrate max (reduced for smoother motion)
+    v_min: 5000              # (USED) override feedrate min (reduced)
+    v_max: 8000              # (USED) override feedrate max (reduced)
     opacity_gamma: 1.8       # (USED) override mapping curve
     p_min: 0.10              # (USED) override flow min
     p_max: 1.00              # (USED) override flow max
@@ -112,8 +112,8 @@ tools:
     min_width: 2.0   # mm  # (USED)
     max_width: 20.0  # mm  # (USED)
     viscosity: 0.40
-    v_min: 6000
-    v_max: 10000
+    v_min: 5000
+    v_max: 8000
     opacity_gamma: 1.8
     p_min: 0.10
     p_max: 1.00
