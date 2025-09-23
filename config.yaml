@@ -88,7 +88,7 @@ tools:
     color: "#000000"
     min_width: 2.0   # mm  # (USED) stroke widths are clamped to [min,max]
     max_width: 25.0  # mm  # (USED)
-    viscosity: 0.70            # thicker black ink
+    viscosity: 0.10            # thicker black ink
     v_min: 3000
     v_max: 5000
     opacity_gamma: 1.9
@@ -102,7 +102,7 @@ tools:
     color: "#FFFFFF"
     min_width: 2.0   # mm  # (USED)
     max_width: 25.0  # mm  # (USED)
-    viscosity: 0.30            # thinner white ink
+    viscosity: 0.10            # thinner white ink
     v_min: 3000
     v_max: 5000
     opacity_gamma: 1.7
