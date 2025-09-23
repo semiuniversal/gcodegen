@@ -89,8 +89,8 @@ tools:
     min_width: 2.0   # mm  # (USED) stroke widths are clamped to [min,max]
     max_width: 25.0  # mm  # (USED)
     viscosity: 0.70            # thicker black ink
-    v_min: 5000
-    v_max: 8000
+    v_min: 3000
+    v_max: 5000
     opacity_gamma: 1.9
     p_min: 0.12
     p_max: 0.95
@@ -103,8 +103,8 @@ tools:
     min_width: 2.0   # mm  # (USED)
     max_width: 25.0  # mm  # (USED)
     viscosity: 0.30            # thinner white ink
-    v_min: 5000
-    v_max: 8000
+    v_min: 3000
+    v_max: 5000
     opacity_gamma: 1.7
     p_min: 0.10
     p_max: 0.90
