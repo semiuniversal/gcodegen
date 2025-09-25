@@ -160,32 +160,102 @@ def save_config(config: Dict, config_file: Union[str, Path]) -> bool:
         return False
 
 
-def validate_config(config: Dict) -> bool:
-    """Validate configuration.
+def _is_number(value: Any) -> bool:
+    try:
+        float(value)
+        return True
+    except (TypeError, ValueError):
+        return False
 
-    Args:
-        config: Configuration dictionary
 
-    Returns:
-        True if configuration is valid, False otherwise
-    """
-    # Check required sections
-    required_sections = ["machine", "gcode", "svg", "tools"]
-    for section in required_sections:
+def _collect_config_errors(config: Dict) -> list:
+    """Return a list of human-friendly validation errors."""
+    errors = []
+
+    # Required sections
+    for section in ["machine", "gcode", "svg", "tools", "airbrush"]:
         if section not in config:
-            logger.error(f"Missing required configuration section: {section}")
-            return False
+            errors.append(f"Missing required section '{section}'.")
+    if errors:
+        return errors
 
-    # Check machine settings
     machine = config.get("machine", {})
-    if not machine.get("bed_size_x") or not machine.get("bed_size_y"):
-        logger.error("Machine bed size not specified")
-        return False
-
-    # Check tool settings
+    svg = config.get("svg", {})
+    airbrush = config.get("airbrush", {})
     tools = config.get("tools", {})
-    if not tools:
-        logger.error("No tools configured")
-        return False
 
-    return True 
+    # Machine required keys
+    for key in ["travel_speed", "z_min", "z_max", "safe_z"]:
+        if key not in machine or not _is_number(machine.get(key)):
+            errors.append(f"machine.{key} must be provided and numeric.")
+    if not errors:
+        z_min = float(machine["z_min"])
+        z_max = float(machine["z_max"])
+        safe_z = float(machine["safe_z"])
+        travel = float(machine["travel_speed"])
+        if z_min <= 0:
+            errors.append("machine.z_min must be > 0.")
+        if z_max <= z_min:
+            errors.append("machine.z_max must be greater than machine.z_min.")
+        if safe_z <= 0:
+            errors.append("machine.safe_z must be > 0.")
+        if travel <= 0:
+            errors.append("machine.travel_speed must be > 0.")
+
+    # SVG required keys
+    for key in ["curve_resolution", "max_segment_length_mm"]:
+        if key not in svg or not _is_number(svg.get(key)):
+            errors.append(f"svg.{key} must be provided and numeric.")
+    if not errors and float(svg.get("curve_resolution", 0)) < 8:
+        errors.append("svg.curve_resolution should be >= 8.")
+    if not errors and float(svg.get("max_segment_length_mm", 0)) <= 0:
+        errors.append("svg.max_segment_length_mm must be > 0.")
+
+    # Airbrush required keys (no global viscosity/flow bounds)
+    for key in ["opacity_speed_gamma", "feedrate_z_exponent", "feedrate_floor"]:
+        if key not in airbrush or not _is_number(airbrush.get(key)):
+            errors.append(f"airbrush.{key} must be provided and numeric.")
+    if not errors:
+        if float(airbrush.get("opacity_speed_gamma", 0)) <= 0:
+            errors.append("airbrush.opacity_speed_gamma must be > 0.")
+        if float(airbrush.get("feedrate_z_exponent", -1)) < 0:
+            errors.append("airbrush.feedrate_z_exponent must be >= 0.")
+        if float(airbrush.get("feedrate_floor", 0)) <= 0:
+            errors.append("airbrush.feedrate_floor must be > 0.")
+
+    # Tools required keys (per-tool viscosity and flow bounds)
+    for tool_name in ["tool0", "tool1"]:
+        if tool_name not in tools:
+            errors.append(f"tools.{tool_name} missing.")
+            continue
+        t = tools[tool_name]
+        for key in ["min_width", "max_width", "v_max", "viscosity", "p_min", "p_max"]:
+            if key not in t or (key != "viscosity" and not _is_number(t.get(key))):
+                errors.append(f"tools.{tool_name}.{key} must be provided and numeric.")
+        # Range checks when available
+        min_w = t.get("min_width")
+        max_w = t.get("max_width")
+        if _is_number(min_w) and _is_number(max_w) and float(max_w) < float(min_w):
+            errors.append(f"tools.{tool_name}.max_width must be >= min_width.")
+        vmax = t.get("v_max")
+        visc = t.get("viscosity")
+        if visc is None or not _is_number(visc) or not (0.0 <= float(visc) <= 1.0):
+            errors.append(f"tools.{tool_name}.viscosity must be between 0.0 and 1.0.")
+        pmin = t.get("p_min")
+        pmax = t.get("p_max")
+        if _is_number(pmin) and _is_number(pmax) and float(pmax) < float(pmin):
+            errors.append(f"tools.{tool_name}.p_max must be >= p_min.")
+
+    return errors
+
+
+def validate_config(config: Dict) -> bool:
+    """Validate configuration and log actionable errors."""
+    errors = _collect_config_errors(config)
+    if errors:
+        logger.error("Configuration validation failed:")
+        for err in errors:
+            logger.error(f" - {err}")
+        logger.error("See gcodegen/default_config.yaml for reference values.")
+        return False
+    return True

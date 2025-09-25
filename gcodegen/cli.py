@@ -225,6 +225,11 @@ def main():
         
         # Load configuration
         config = load_config(args.config)
+        # Validate configuration (fail fast)
+        from gcodegen.config import validate_config as _validate
+        if not _validate(config):
+            logger.error("Exiting due to invalid configuration.")
+            return False
         
         # Convert SVG to G-code
         success = convert_svg_to_gcode(input_file, output_file, config, args.units)

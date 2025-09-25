@@ -65,6 +65,12 @@ class AirbrushController:
         self.feedrate_min_default = float(self.config.get("airbrush", {}).get("feedrate_min", 6000.0))
         self.feedrate_max_default = float(self.config.get("airbrush", {}).get("feedrate_max", self.travel_speed))
         self.opacity_speed_gamma_default = float(self.config.get("airbrush", {}).get("opacity_speed_gamma", 1.8))
+        # Opacity floor for speed mapping (0..1): s_opacity = s_min + (1-s_min)*(1-opacity)^gamma
+        self.opacity_speed_min = float(self.config.get("airbrush", {}).get("opacity_speed_min", 0.0))
+        # Z-aware speed exponent (slows as Z increases): factor=(z_min/z)^exponent
+        self.feedrate_z_exponent = float(self.config.get("airbrush", {}).get("feedrate_z_exponent", 1.2))
+        # Safety floor to avoid stalling when viscosity drives speed very low
+        self.feedrate_floor = float(self.config.get("airbrush", {}).get("feedrate_floor", 500.0))
         # Viscosity default (0.0 thin .. 1.0 thick)
         self.viscosity_default = float(self.config.get("airbrush", {}).get("viscosity", 0.5))
 
@@ -264,12 +270,19 @@ class AirbrushController:
         # Clamp to configured Z bounds (respect config z_max)
         z_height = max(self.z_min, min(self.z_max, z_from_width))
 
-        # Opacity -> feedrate
-        v_min = float(tool_cfg.get("v_min", self.feedrate_min_default)) if isinstance(tool_cfg, dict) else self.feedrate_min_default
+        # Opacity -> feedrate (Z-aware, viscosity-attenuated). Map by percentage, not lower clamped.
         v_max = float(tool_cfg.get("v_max", self.feedrate_max_default)) if isinstance(tool_cfg, dict) else self.feedrate_max_default
         gamma = float(tool_cfg.get("opacity_gamma", self.opacity_speed_gamma_default)) if isinstance(tool_cfg, dict) else self.opacity_speed_gamma_default
         o = max(0.0, min(1.0, float(stroke_opacity)))
-        feedrate = v_min + ((1.0 - o) ** gamma) * max(0.0, v_max - v_min)
+        # Normalized opacity factor
+        opacity_factor = (1.0 - o) ** gamma
+        # Apply opacity floor so full-opacity strokes retain nonzero speed share
+        s_opacity = self.opacity_speed_min + (1.0 - self.opacity_speed_min) * opacity_factor
+        # Z factor: larger Z -> smaller factor; guard for division by zero
+        z_denom = max(self.z_min, z_height)
+        z_factor = (self.z_min / z_denom) ** max(0.0, self.feedrate_z_exponent)
+        # Combined normalized factor in [0..1]
+        speed_factor = max(0.0, min(1.0, s_opacity * z_factor))
 
         # Opacity/width -> flow
         flow_min = float(tool_cfg.get("p_min", self.flow_min_default)) if isinstance(tool_cfg, dict) else self.flow_min_default
@@ -287,16 +300,14 @@ class AirbrushController:
         # Single viscosity knob (0 = thin, 1 = thick). Per-tool overrides allowed.
         viscosity = float(tool_cfg.get("viscosity", self.viscosity_default)) if isinstance(tool_cfg, dict) else self.viscosity_default
         viscosity = max(0.0, min(1.0, viscosity))
-        # Map viscosity to multipliers/offsets
-        # Thin → slightly faster, slightly less flow; Thick → slower, more flow, positive offset
-        feedrate_multiplier = 1.10 + (0.75 - 1.10) * viscosity
+        # Map viscosity to flow adjustments only; speed attenuation handled below via speed_factor
         visc_flow_scale = 0.90 + (1.30 - 0.90) * viscosity
         visc_flow_offset = -0.05 + (0.10 + 0.05) * viscosity  # -0.05 .. +0.10
 
-        # Apply viscosity effects
-        feedrate *= feedrate_multiplier
-        # Final clamp for feedrate
-        feedrate = max(v_min, min(v_max, feedrate))
+        # Apply viscosity to speed factor: viscosity=0 keeps max; viscosity=1 drives toward zero
+        speed_factor *= (1.0 - viscosity)
+        # Map to absolute feedrate using v_max as cap; keep a small floor for stepper stability
+        feedrate = max(self.feedrate_floor, speed_factor * v_max)
 
         paint_flow = base_flow * flow_scale * visc_flow_scale + (flow_offset + visc_flow_offset)
         paint_flow = max(flow_min, min(flow_max, paint_flow))

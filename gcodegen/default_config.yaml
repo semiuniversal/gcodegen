@@ -15,8 +15,8 @@
 # Machine parameters
 machine:
   name: "H.Airbrush"  # (OPTIONAL) for operator reference only
-  bed_size_x: 875  # mm  # (OPTIONAL) physical bed X; currently not enforced in code
-  bed_size_y: 1100  # mm # (OPTIONAL) physical bed Y; currently not enforced in code
+  bed_size_x: 695  # mm  # (OPTIONAL) physical bed X; currently not enforced in code
+  bed_size_y: 1080  # mm # (OPTIONAL) physical bed Y; currently not enforced in code
   head_offsets:
     tool0:
       x: 0  # mm  # (USED) XY offset for Tool 0 tip relative to machine origin
@@ -77,17 +77,16 @@ v_axis:
 
 airbrush:
   # Defaults for deterministic mapping; can be overridden per tool below
-  feedrate_min: 6000            # (USED) mm/min floor
-  feedrate_max: 24000           # (USED) mm/min ceiling
-  opacity_speed_gamma: 2.2      # (USED) curve for opacity→speed (slower for darker strokes)
-  flow_min: 0.10                # (USED) 0..1 internal flow
-  flow_max: 1.00                # (USED)
-  flow_width_factor: 0.05       # (USED) extra flow for wider strokes
-  viscosity: 0.50               # (USED) viscosity scale: 0.00 water, 0.50 milk, 1.00 heavy cream
-  paint_lead_ms: 50             # (USED) delay after pre-opening paint before XY motion
-  feedrate_every_move: true    # (USED) emit F on every G1 segment for viewer compatibility
-  viewer_compat: false         # (USED) keep U/V off XY lines for viewer rendering
-  viewer_emit_m3m5: false      # (USED) add M3/M5 hints at stroke start/end (viewer only)
+  opacity_speed_gamma: 1.49
+  feedrate_z_exponent: 0.26
+  feedrate_floor: 20
+  opacity_speed_min: 0.74
+  # Per-tool p_min/p_max required; global flow_min/flow_max removed
+  flow_width_factor: 0.05
+  paint_lead_ms: 50
+  feedrate_every_move: true
+  viewer_compat: false
+  viewer_emit_m3m5: false
 
 # Tool definitions
 tools:
@@ -95,26 +94,23 @@ tools:
     name: "Black"
     color: "#000000"
     min_width: 2.0   # mm  # (USED) stroke widths are clamped to [min,max]
-    max_width: 20.0  # mm  # (USED)
-    # Per-tool overrides for paint/ink differences
-    viscosity: 0.60          # (USED) this brush tends thicker by default
-    v_min: 5000              # (USED) override feedrate min (reduced)
-    v_max: 8000              # (USED) override feedrate max (reduced)
-    opacity_gamma: 1.8       # (USED) override mapping curve
-    p_min: 0.10              # (USED) override flow min
-    p_max: 1.00              # (USED) override flow max
-    flow_scale: 1.00         # (USED) multiplicative
-    flow_offset: 0.00        # (USED) additive
-    flow_width_factor: 0.05  # (USED)
+    max_width: 30.0
+    viscosity: 0.50
+    v_max: 2871
+    opacity_gamma: 1.49
+    p_min: 0.10
+    p_max: 1.00
+    flow_scale: 1.00
+    flow_offset: 0.00
+    flow_width_factor: 0.05
   tool1:
     name: "White"
     color: "#FFFFFF"
     min_width: 2.0   # mm  # (USED)
-    max_width: 20.0  # mm  # (USED)
-    viscosity: 0.40
-    v_min: 5000
-    v_max: 8000
-    opacity_gamma: 1.8
+    max_width: 30.0
+    viscosity: 0.50
+    v_max: 2871
+    opacity_gamma: 1.49
     p_min: 0.10
     p_max: 1.00
     flow_scale: 1.00
