@@ -28,6 +28,7 @@ machine:
   work_speed: 3000     # mm/min  # (USED) baseline draw speed in some code paths
   z_speed: 1200        # mm/min  # (USED) speed for Z raises/lowers
   skip_homing: false             # (USED) if true, omits G28 homing in init
+  enforce_bed_limits: true       # (USED) clamp drawing G0/G1 XY to bed envelope
 
 # G-code commands
 gcode:

@@ -29,6 +29,8 @@ class AirbrushController:
         # Machine parameters
         self.machine_width = self.config.get("machine", {}).get("bed_size_x", 700)
         self.machine_height = self.config.get("machine", {}).get("bed_size_y", 1000)
+        # Enforce XY bed limits for drawing moves (allows negative tool-offset math at firmware level)
+        self.enforce_bed_limits = bool(self.config.get("machine", {}).get("enforce_bed_limits", True))
         self.machine_z_min = 0.0
         self.machine_z_max = 84.0
 
@@ -108,6 +110,17 @@ class AirbrushController:
             return "#ffffff"
         # Treat any non-white as black by default (two-color device)
         return "#000000" if c != "#ffffff" else "#ffffff"
+
+    def _clip_xy(self, x: float, y: float) -> Tuple[float, float, bool]:
+        """Clamp XY to the configured bed envelope if enforcement is enabled.
+
+        Returns (cx, cy, clipped_flag).
+        """
+        if not self.enforce_bed_limits:
+            return x, y, False
+        cx = max(0.0, min(float(self.machine_width), float(x)))
+        cy = max(0.0, min(float(self.machine_height), float(y)))
+        return cx, cy, (abs(cx - x) > 1e-9 or abs(cy - y) > 1e-9)
 
     def _resolve_tool_for_color(self, stroke_color: str) -> Tuple[str, Dict]:
         tools_cfg = self.config.get("tools", {}) or {}
@@ -395,7 +408,9 @@ class AirbrushController:
 
         # Rapid to start point at travel speed (current Z is guaranteed >= min(safe, z_height))
         x0, y0 = polyline[0]
-        commands.append(f"G0 X{x0:.3f} Y{y0:.3f} F{self.travel_speed:.3f}")
+        x0c, y0c, clipped0 = self._clip_xy(x0, y0)
+        clipped_points = 1 if clipped0 else 0
+        commands.append(f"G0 X{x0c:.3f} Y{y0c:.3f} F{self.travel_speed:.3f}")
         commands.append("M400 ; Wait for XY movement to complete")
 
         # Descend or adjust to drawing Z if needed (safe to lower after travel)
@@ -424,10 +439,13 @@ class AirbrushController:
 
             # Draw XY only moves (no axis terms)
             for x, y in polyline[1:]:
+                xc, yc, clipped = self._clip_xy(x, y)
+                if clipped:
+                    clipped_points += 1
                 if feed_every:
-                    commands.append(f"G1 X{x:.3f} Y{y:.3f} F{feedrate:.3f}")
+                    commands.append(f"G1 X{xc:.3f} Y{yc:.3f} F{feedrate:.3f}")
                 else:
-                    commands.append(f"G1 X{x:.3f} Y{y:.3f}")
+                    commands.append(f"G1 X{xc:.3f} Y{yc:.3f}")
 
             # Ramp flow down to dead zone after XY completes (separate axis move)
             commands.append("M400 ; Wait for drawing to complete")
@@ -446,23 +464,30 @@ class AirbrushController:
 
             num_points = len(polyline)
             for idx, (x, y) in enumerate(polyline[1:], start=1):
+                xc, yc, clipped = self._clip_xy(x, y)
+                if clipped:
+                    clipped_points += 1
                 if idx == 1:
                     # First segment: ramp up flow to target while moving
                     if feed_every:
-                        commands.append(f"G1 X{x:.3f} Y{y:.3f} {axis}{flow_position:.3f} F{feedrate:.3f}")
+                        commands.append(f"G1 X{xc:.3f} Y{yc:.3f} {axis}{flow_position:.3f} F{feedrate:.3f}")
                     else:
-                        commands.append(f"G1 X{x:.3f} Y{y:.3f} {axis}{flow_position:.3f}")
+                        commands.append(f"G1 X{xc:.3f} Y{yc:.3f} {axis}{flow_position:.3f}")
                 elif idx == num_points - 1:
                     # Final segment: ramp flow down to dead zone so paint stops by segment end
                     if feed_every:
-                        commands.append(f"G1 X{x:.3f} Y{y:.3f} {axis}{axis_dead:.3f} F{feedrate:.3f}")
+                        commands.append(f"G1 X{xc:.3f} Y{yc:.3f} {axis}{axis_dead:.3f} F{feedrate:.3f}")
                     else:
-                        commands.append(f"G1 X{x:.3f} Y{y:.3f} {axis}{axis_dead:.3f}")
+                        commands.append(f"G1 X{xc:.3f} Y{yc:.3f} {axis}{axis_dead:.3f}")
                 else:
                     if feed_every:
-                        commands.append(f"G1 X{x:.3f} Y{y:.3f} F{feedrate:.3f}")
+                        commands.append(f"G1 X{xc:.3f} Y{yc:.3f} F{feedrate:.3f}")
                     else:
-                        commands.append(f"G1 X{x:.3f} Y{y:.3f}")
+                        commands.append(f"G1 X{xc:.3f} Y{yc:.3f}")
+
+        # Emit a concise summary warning if any clipping occurred
+        if 'clipped_points' in locals() and clipped_points > 0:
+            commands.append(f"; WARNING: Clipped {clipped_points} XY point(s) to bed [0..{float(self.machine_width):.3f}]x[0..{float(self.machine_height):.3f}] mm")
 
         # Ensure motion complete before stopping brush (non-viewer branch already added M400 above)
         if not self.viewer_compat:

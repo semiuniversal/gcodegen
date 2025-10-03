@@ -15,8 +15,8 @@
 # Machine parameters
 machine:
   name: "H.Airbrush"  # (OPTIONAL) for operator reference only
-  bed_size_x: 695  # mm  # (OPTIONAL) physical bed X; currently not enforced in code
-  bed_size_y: 1080  # mm # (OPTIONAL) physical bed Y; currently not enforced in code
+  bed_size_x: 695  # mm  # (USED) physical bed X; drawing XY is clipped to [0..bed_size_x]
+  bed_size_y: 1080  # mm # (USED) physical bed Y; drawing XY is clipped to [0..bed_size_y]
   head_offsets:
     tool0:
       x: 0  # mm  # (USED) XY offset for Tool 0 tip relative to machine origin
@@ -31,6 +31,7 @@ machine:
   work_speed: 3000     # mm/min  # (USED) baseline draw speed in some code paths
   z_speed: 1200        # mm/min  # (USED) speed for Z raises/lowers
   skip_homing: false             # (USED) if true, omits G28 homing in init
+  enforce_bed_limits: true       # (USED) clamp drawing G0/G1 XY to bed envelope
 
 # G-code commands
 gcode:
